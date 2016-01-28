@@ -164,11 +164,128 @@ void winalert(pdfapp_t *app, pdf_alert_event *alert)
 	}
 }
 
+void winblitprn(HDC hdc, pdfapp_t *app, int img_x, int img_y)
+{
+	BITMAPINFO *dibinf = NULL;
+
+	dibinf = malloc(sizeof(BITMAPINFO) + 12);
+	assert(dibinf);
+	dibinf->bmiHeader.biSize = sizeof(dibinf->bmiHeader);
+	dibinf->bmiHeader.biPlanes = 1;
+	dibinf->bmiHeader.biBitCount = 32;
+	dibinf->bmiHeader.biCompression = BI_RGB;
+	dibinf->bmiHeader.biXPelsPerMeter = 2834;
+	dibinf->bmiHeader.biYPelsPerMeter = 2834;
+	//dibinf->bmiHeader.biClrUsed = 0;
+	//dibinf->bmiHeader.biClrImportant = 0;
+
+	int image_w = fz_pixmap_width(app->ctx, app->image);
+	int image_h = fz_pixmap_height(app->ctx, app->image);
+	int image_n = fz_pixmap_components(app->ctx, app->image);
+
+	unsigned char *samples = fz_pixmap_samples(app->ctx, app->image);
+	int x0 = app->panx;
+	int y0 = app->pany;
+	int x1 = app->panx + image_w;
+	int y1 = app->pany + image_h;
+	RECT r;
+	
+	if (app->image)
+	{
+		dibinf->bmiHeader.biWidth = image_w;
+		dibinf->bmiHeader.biHeight = -image_h;
+		//dibinf->bmiHeader.biSizeImage = image_h * 4;
+
+		if (image_n == 2)
+		{
+			int i = image_w * image_h;
+			unsigned char *color = malloc(i * 4);
+			unsigned char *s = samples;
+			unsigned char *d = color;
+			for (; i > 0; i--)
+			{
+				d[2] = d[1] = d[0] = *s++;
+				d[3] = *s++;
+				d += 4;
+			}
+			SetDIBitsToDevice(hdc,
+				app->panx, app->pany, image_w, image_h,
+				0, 0, 0, image_h, color,
+				dibinf, DIB_RGB_COLORS);
+			free(color);
+		}
+		if (image_n == 4)
+		{
+			int scanline = 0;
+		
+			/*
+			scanline = SetDIBitsToDevice(hdc,
+				app->panx, app->pany, image_w, image_h,
+				0, 0, 0, image_h, samples,
+				dibinf, DIB_RGB_COLORS);
+				*/
+
+			scanline = StretchDIBits(hdc,
+				0, 0, img_x, img_y,
+				0, 0, image_w, image_h, samples,
+				dibinf, DIB_RGB_COLORS, SRCCOPY);
+
+			if (scanline == 0)
+				winerror(&gapp, "DIB set fialed");
+
+		}
+
+		free(dibinf);
+	}
+}
+
+
 void winprint(pdfapp_t *app)
 {
 	MessageBoxA(hwndframe, "The MuPDF library supports printing, but this application currently does not", "Print document", MB_ICONWARNING);
+
 }
 
+void winprinthwnd(HWND hwnd, pdfapp_t *app)
+{
+	HDC hPrinterDC = NULL;
+	PRINTDLG dlgPrint;
+	// Initialize PRINTDLG
+	ZeroMemory(&dlgPrint, sizeof(dlgPrint));
+	dlgPrint.lStructSize = sizeof(dlgPrint);
+	dlgPrint.hwndOwner = hwnd;
+	dlgPrint.hDevMode = NULL;     // Don't forget to free or store hDevMode.
+	dlgPrint.hDevNames = NULL;     // Don't forget to free or store hDevNames.
+	dlgPrint.Flags = PD_RETURNDC;
+	dlgPrint.nCopies = 1;
+	dlgPrint.nFromPage = 0xFFFF;
+	dlgPrint.nToPage = 0xFFFF;
+	dlgPrint.nMinPage = 1;
+	dlgPrint.nMaxPage = 0xFFFF;
+
+	if (PrintDlg(&dlgPrint) && dlgPrint.hDevMode != NULL)
+	{
+		/*
+		DEVNAMES *pDevNames = (DEVNAMES*)GlobalLock(dlgPrint.hDevNames);
+		DEVMODE* pDevMode = NULL;
+		if (dlgPrint.hDevMode != NULL)
+			pDevMode = GlobalLock(dlgPrint.hDevMode);
+		hPrinterDC = CreateDC((LPCTSTR)pDevNames + pDevNames->wDriverOffset,
+			(LPCTSTR)pDevNames + pDevNames->wDeviceOffset,
+			(LPCTSTR)pDevNames + pDevNames->wOutputOffset,
+			pDevMode);
+		GlobalUnlock(dlgPrint.hDevNames);
+		if (dlgPrint.hDevMode != NULL)
+			GlobalUnlock(dlgPrint.hDevMode);
+			*/
+		hPrinterDC = dlgPrint.hDC;
+
+		winprintpages(hPrinterDC, app);
+		DeleteDC(hPrinterDC);
+	}
+
+
+}
 int winsavequery(pdfapp_t *app)
 {
 	switch(MessageBoxA(hwndframe, "File has unsaved changes. Do you want to save", "MuPDF", MB_YESNOCANCEL))

@@ -1,3 +1,7 @@
+#include <windows.h>
+#include <commdlg.h>
+#include <shellapi.h>
+
 #include "pdfapp.h"
 #include "curl_stream.h"
 
@@ -1504,6 +1508,10 @@ void pdfapp_onkey(pdfapp_t *app, int c, int modifiers)
 		loadpage = 0;
 		break;
 
+	case 'P':
+		winprinthwnd(0, app);
+		break;
+
 	}
 
 	if (c < '0' || c > '9')
@@ -1982,3 +1990,47 @@ void pdfapp_postblit(pdfapp_t *app)
 		app->in_transit = 0;
 	}
 }
+
+void winprintpages(HDC hdc, pdfapp_t *app)
+{
+	static DOCINFO di;
+	memset(&di, 0, sizeof(DOCINFO));
+	// Fill in the required members.
+	di.cbSize = sizeof(DOCINFO);
+	di.lpszDocName = app->doctitle;
+	di.lpszOutput = (LPTSTR)NULL;
+	di.lpszDatatype = (LPTSTR)NULL;
+	di.fwType = 0;
+
+	int cxpage = GetDeviceCaps(hdc, HORZRES);
+	int cypage = GetDeviceCaps(hdc, VERTRES);
+	int flag = GetDeviceCaps(hdc, RASTERCAPS);
+
+	if ((flag & RC_BITBLT) == 0)
+		winerror(app, "No BitBlt cap");
+	if ((flag & RC_DIBTODEV) == 0)
+		winerror(app, "No DIB Set");
+
+	int number = 1;
+
+	StartDoc(hdc, &di);
+	for (number = 1; number <= app->pagecount; number++)
+	{
+		StartPage(hdc);
+
+		SetMapMode(hdc, MM_ISOTROPIC);
+		SetWindowExtEx(hdc, cxpage, cypage, NULL);
+		SetViewportExtEx(hdc, cxpage, cypage, NULL);
+		SetViewportOrgEx(hdc, 0, 0, NULL);
+
+		app->pageno = number;
+		pdfapp_showpage(app, 1, 1, 0, 0, 0);
+		winblitprn(hdc, app, cxpage, cypage);
+
+		EndPage(hdc);
+	}
+	EndDoc(hdc);
+
+	DeleteDC(hdc);
+}
+

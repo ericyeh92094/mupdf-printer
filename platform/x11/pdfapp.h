@@ -44,6 +44,8 @@ extern void winadvancetimer(pdfapp_t *, float duration);
 extern void winreplacefile(char *source, char *target);
 extern void wincopyfile(char *source, char *target);
 extern void winreloadpage(pdfapp_t *);
+extern void winprintpages(HDC hdc, pdfapp_t *app);
+extern void winblitprn(HDC hdc, pdfapp_t *app, int img_x, int img_y);
 
 struct pdfapp_s
 {
